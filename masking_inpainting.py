@@ -10,6 +10,8 @@ from clipseg.models.clipseg import CLIPDensePredT
 from PIL import Image
 from matplotlib import pyplot as plt
 
+import cv2
+import numpy as np
 
 def clipseg_model_1(device):
     """Loads clipseg model #1 in inference mode.
@@ -89,16 +91,23 @@ def create_mask(input_path, transform, prompts, model, verbose=2):
     with torch.inference_mode():
         preds = model(input_image_trans.repeat(n, 1, 1, 1), prompts)[0]
 
+    kernel = np.ones((5,5), np.uint8)
+    preds_refined = torch.zeros_like(preds)
+    for i in range(preds.shape[0]):
+        pred_np = preds[i].squeeze().cpu().numpy()
+        pred_np = cv2.erode(pred_np, kernel, iterations=1)
+        preds_refined[i] = torch.tensor(pred_np).unsqueeze(0)
+
     # Plot results
     if verbose == 2:
 
         # Raw results
         print('Image Segmentation:')
-        plot_masks(input_image, prompts, preds)
+        plot_masks(input_image, prompts, preds_refined)
 
         # Binary (0 or 1) results
-        cutoff = preds.min() + 0.50 * (preds.max() - preds.min())
-        mask_image = torch.where(preds > cutoff, 1.0, 0.0)
+        cutoff = preds_refined.min() + 0.75 * (preds_refined.max() - preds_refined.min())
+        mask_image = torch.where(preds_refined > cutoff, 1.0, 0.0)
         print('Mask Generation:')
         plot_masks(input_image, prompts, mask_image)
 
